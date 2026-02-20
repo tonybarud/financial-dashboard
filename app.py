@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(
     layout="wide",
-    page_title="Tonys Finance", 
+    page_title="Tony Market Pulse", 
     page_icon="💰"  # Money bag icon
 )
 
@@ -319,4 +319,5 @@ elif page == "Options Chain Viewer":
 elif page == "AI Trade Signals":
     st.header("AI Trade Signals")
     # your existing implementation here
+
 
