@@ -6,7 +6,11 @@ from zoneinfo import ZoneInfo
 
 from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(layout="wide")
+st.set_page_config(
+    layout="wide",
+    page_title="Tonys Finance", 
+    page_icon="💰"  # Money bag icon
+)
 
 # ---------------- CONFIG ----------------
 YAHOO_NEWS_TICKER = "^GSPC"  # broad market symbol for general headlines
@@ -315,3 +319,4 @@ elif page == "Options Chain Viewer":
 elif page == "AI Trade Signals":
     st.header("AI Trade Signals")
     # your existing implementation here
+
