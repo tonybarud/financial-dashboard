@@ -12,6 +12,25 @@ st.set_page_config(layout="wide")
 YAHOO_NEWS_TICKER = "^GSPC"  # broad market symbol for general headlines
 MAX_NEWS_ITEMS = 6           # number of headlines to show
 
+# Remove top spacing + improve dark mode compatibility
+st.markdown("""
+<style>
+    /* Remove top padding */
+    div.block-container { padding-top: 1rem !important; }
+    div.stAppViewBlockContainer { padding-top: 1rem !important; }
+    
+    /* Dark mode background */
+    section[data-testid="stAppViewContainer"] {
+        background-color: #0e1117;
+    }
+    
+    /* Ensure sidebar is dark */
+    section[data-testid="stSidebar"] {
+        background-color: #1e1e1e;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Auto-refresh every 60 seconds (60,000 ms)
 st_autorefresh(interval=60 * 1000, key="app_autorefresh")
 
@@ -43,9 +62,9 @@ def render_live_news():
         unsafe_allow_html=True,
     )
 
-    # Bold CT date/time, visible on white background
+    # Bold CT date/time - WHITE with shadow for dark mode visibility
     st.markdown(
-        f"<p style='font-weight:bold; color:#000000;'>{now_ct.strftime('%A, %B %d, %Y - %I:%M:%S %p CT')}</p>",
+        f"<p style='font-weight:bold; color:#ffffff; text-shadow: 1px 1px 2px #000000; font-size:16px; margin:5px 0;'>{now_ct.strftime('%A, %B %d, %Y - %I:%M:%S %p CT')}</p>",
         unsafe_allow_html=True,
     )
 
@@ -88,11 +107,11 @@ def render_live_news():
                 "nasdaq tumbles",
             ]
         )
-        color = "#e74c3c" if is_important else "#000000"  # red or black
+        color = "#e74c3c" if is_important else "#ffffff"  # red or white for dark bg
 
         if link:
             st.markdown(
-                f"- <span style='color:{color};'>"
+                f"- <span style='color:{color}; font-size:14px;'>"
                 f"<a href='{link}' target='_blank' "
                 f"style='color:{color}; text-decoration:none;'>{title}</a>"
                 f"</span>",
@@ -100,7 +119,7 @@ def render_live_news():
             )
         else:
             st.markdown(
-                f"- <span style='color:{color};'>{title}</span>",
+                f"- <span style='color:{color}; font-size:14px;'>{title}</span>",
                 unsafe_allow_html=True,
             )
 
@@ -195,7 +214,7 @@ INDEX_NAMES = {
 st.markdown(
     """
     <style>
-    /* Add any custom CSS here if you like */
+    /* Additional custom CSS if needed */
     </style>
     """,
     unsafe_allow_html=True,
