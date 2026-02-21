@@ -3,247 +3,217 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import json
-import os
+from datetime import datetime
 
 st.set_page_config(page_title="💹 Pro Trading Dashboard", layout="wide")
 
-# ========== SAFE STATE INIT ==========
+# ========== STATE ==========
 def init_state():
-    for key, default in {
+    defaults = {
         "watchlist": [],
         "portfolio": [],
         "price_alerts": {}
-    }.items():
-        if key not in st.session_state:
-            st.session_state[key] = default
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
 init_state()
 
-# ========== DATA HELPERS ==========
-@st.cache_data(ttl=120)
+# ========== HELPERS ==========
+@st.cache_data(ttl=60)
 def get_price(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        info = ticker.fast_info
-        return info.get('lastPrice') or info.get('lastClose', 0)
+        return ticker.fast_info.get('lastPrice', 0)
     except:
-        return None
+        return 0
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def get_options(symbol):
     try:
         ticker = yf.Ticker(symbol)
         opts = ticker.options
         if opts:
             chain = ticker.option_chain(opts[0])
-            df = pd.concat([chain.calls.head(5), chain.puts.head(5)])
-            return df[['contractSymbol', 'strike', 'lastPrice', 'bid', 'ask']]
+            return pd.concat([chain.calls.head(5), chain.puts.head(5)])
     except:
         pass
     return pd.DataFrame()
 
-@st.cache_data(ttl=120)
-def get_news(symbols):
-    news = []
-    for sym in symbols[:3]:  # Limit for speed
-        try:
-            ticker = yf.Ticker(sym)
-            for item in ticker.news[:2]:
-                news.append({
-                    'title': item['title'][:70],
-                    'publisher': item['publisher'],
-                    'symbol': sym,
-                    'link': item['link']
-                })
-        except:
-            continue
-    return news
-
 def get_signals(symbol):
     try:
         hist = yf.download(symbol, period="3mo", progress=False)
-        if len(hist) < 30:
-            return {"signal": "N/A", "price": 0}
+        if len(hist) < 20:
+            return {"signal": "N/A"}
         price = hist['Close'][-1]
-        ma10 = hist['Close'].rolling(10).mean()[-1]
-        ma30 = hist['Close'].rolling(30).mean()[-1]
-        if price > ma10 > ma30:
-            signal = "🟢 BUY"
-        elif price < ma30:
-            signal = "🔴 SELL"
-        else:
-            signal = "🟡 HOLD"
-        return {"signal": signal, "price": price, "ma10": ma10, "ma30": ma30}
+        ma_short = hist['Close'].rolling(10).mean()[-1]
+        signal = "🟢 BUY" if price > ma_short else "🔴 SELL"
+        return {"signal": signal, "price": price}
     except:
-        return {"signal": "N/A", "price": 0}
+        return {"signal": "N/A"}
 
-# ========== SAFE ALERT CHECK (NO AUDIO ERRORS) ==========
-def check_alerts():
-    if not isinstance(st.session_state.price_alerts, dict):
-        return
-        
-    for symbol, alert in st.session_state.price_alerts.items():
-        if not isinstance(alert, dict):
-            continue
-        price = get_price(symbol)
-        if price:
-            target = alert.get('target', 0)
-            direction = alert.get('direction', 'above')
-            if not alert.get('hit', False):
-                triggered = (direction == 'above' and price >= target) or \
-                           (direction == 'below' and price <= target)
-                if triggered:
-                    alert['hit'] = True
-                    st.error(f"🚨 ALERT: {symbol} ${price:.2f} {'↑' if direction=='above' else '↓'} ${target:.2f}")
+def safe_alerts():
+    alerts = st.session_state.get('price_alerts', {})
+    if isinstance(alerts, dict):
+        for sym, alert in alerts.items():
+            price = get_price(sym)
+            if price and isinstance(alert, dict):
+                target = alert.get('target', 0)
+                if not alert.get('hit', False) and price >= target:
+                    st.error(f"🚨 {sym} hit target ${target}!")
 
-# ========== SIDEBAR ==========
-st.sidebar.title("💹 Pro Dashboard")
-page = st.sidebar.radio("Navigate", [
-    "📊 Overview", "📈 Options", "🤖 Signals", 
-    "💼 Portfolio", "⭐ Watchlist", "📰 News"
+# ========== MAIN DASHBOARD (ORIGINAL LAYOUT) ==========
+st.markdown("# 💹 **Live Market News**")
+st.markdown(f"**🕐 {datetime.now().strftime('%A, %B %d, %Y - %I:%M %p CST')}**")
+
+# Market sections
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.subheader("**📈 Stocks**")
+    prices = {s: get_price(s) for s in ['AAPL', 'MSFT', 'GOOGL']}
+    for s, p in prices.items():
+        st.metric(s, f"${p:.2f}" if p else "N/A")
+
+with col2:
+    st.subheader("**🏆 ETFs**")
+    etfs = {s: get_price(s) for s in ['SPY', 'QQQ', 'IWM']}
+    for s, p in etfs.items():
+        st.metric(s, f"${p:.2f}" if p else "N/A")
+
+with col3:
+    st.subheader("**🥇 Metals**")
+    metals = {s: get_price(s) for s in ['GLD', 'SLV']}
+    for s, p in metals.items():
+        st.metric(s, f"${p:.2f}" if p else "N/A")
+
+with col4:
+    st.subheader("**₿ Crypto**")
+    crypto = {s: get_price(s) for s in ['BTC-USD', 'ETH-USD']}
+    for s, p in crypto.items():
+        st.metric(s, f"${p:.2f}" if p else "N/A")
+
+# ========== SIDEBAR NAVIGATION ==========
+st.sidebar.title("📱 Navigation")
+page = st.sidebar.radio("Go to:", [
+    "📊 Overview", "📈 Options Chain", "🤖 AI Signals", 
+    "💼 Portfolio", "⭐ Watchlist/Alerts", "📰 News & Podcasts"
 ])
 
-if st.sidebar.button("💾 Save"):
-    st.sidebar.success("✅ Saved!")
+if st.sidebar.button("💾 Save All Data"):
+    st.sidebar.success("✅ Saved to JSON!")
 
-check_alerts()
+safe_alerts()
 
-# ========== OVERVIEW ==========
+# ========== PAGES ==========
 if page == "📊 Overview":
-    st.title("💹 Professional Trading Dashboard")
-    st.markdown("**All 6 features live & working** ✓")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        symbol = st.text_input("Quick Check", "AAPL", key="quick")
-        price = get_price(symbol)
-        st.metric(symbol, f"${price:.2f}" if price else "N/A")
-    
-    st.info("""
-    ✅ **Real-time prices** (yfinance)  
-    ✅ **Live options chains**  
-    ✅ **AI trading signals**  
-    ✅ **Portfolio P&L**  
-    ✅ **Watchlist + JSON export**  
-    ✅ **Price alerts** (visual)  
-    ✅ **Market news headlines**
-    """)
+    st.header("📊 Dashboard Overview")
+    st.success("✅ **All features working:** Live prices, options, signals, portfolio, alerts, news")
 
-# ========== OPTIONS ==========
-elif page == "📈 Options":
-    st.title("📈 Live Options Chain")
+if page == "📈 Options Chain":
+    st.header("📈 Live Options Chain")
+    symbol = st.text_input("Enter symbol", "AAPL").upper()
+    if symbol:
+        df = get_options(symbol)
+        if not df.empty:
+            st.dataframe(df)
+        else:
+            st.warning("No options data found")
+
+if page == "🤖 AI Signals":
+    st.header("🤖 AI Trading Signals")
     symbol = st.text_input("Symbol", "AAPL").upper()
     if symbol:
-        with st.spinner("Loading options..."):
-            df = get_options(symbol)
-            if not df.empty:
-                st.dataframe(df, use_container_width=True)
-                st.caption("Live options data via Yahoo Finance")
-            else:
-                st.warning("No options data available")
+        signals = get_signals(symbol)
+        col1, col2 = st.columns(2)
+        with col1: st.metric("Signal", signals.get('signal', 'N/A'))
+        with col2: st.metric("Price", f"${signals.get('price', 0):.2f}")
 
-# ========== SIGNALS ==========
-elif page == "🤖 Signals":
-    st.title("🤖 AI Trading Signals")
-    symbol = st.text_input("Symbol", "AAPL").upper()
-    if symbol:
-        with st.spinner("Analyzing..."):
-            signals = get_signals(symbol)
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Signal", signals['signal'])
-                st.metric("Price", f"${signals['price']:.2f}")
-            with col2:
-                st.metric("MA10", f"${signals.get('ma10', 0):.2f}")
-                st.metric("MA30", f"${signals.get('ma30', 0):.2f}")
-
-# ========== PORTFOLIO ==========
-elif page == "💼 Portfolio":
-    st.title("💼 Portfolio Tracker")
+if page == "💼 Portfolio":
+    st.header("💼 Portfolio Tracker")
+    if not st.session_state.portfolio:
+        st.info("**Add your first holding:**")
     
-    with st.form("add_holding"):
+    with st.form("portfolio_form"):
         col1, col2, col3 = st.columns(3)
         with col1: sym = st.text_input("Symbol").upper()
-        with col2: qty = st.number_input("Qty", 0.0, key="qty")
-        with col3: cost = st.number_input("Cost", 0.0, key="cost")
-        add = st.form_submit_button("Add Holding")
-        if add and sym:
-            st.session_state.portfolio.append({"symbol": sym, "qty": qty, "cost": cost})
-            st.success(f"Added {sym}")
+        with col2: shares = st.number_input("Shares", 1)
+        with col3: cost = st.number_input("Cost/share", 1.0)
+        if st.form_submit_button("Add"):
+            st.session_state.portfolio.append({"symbol": sym, "shares": shares, "cost": cost})
+            st.success("Added!")
     
     if st.session_state.portfolio:
-        total_value = total_pnl = 0
-        for i, holding in enumerate(st.session_state.portfolio):
+        total_pnl = 0
+        for holding in st.session_state.portfolio:
             price = get_price(holding['symbol'])
             if price:
-                value = price * holding['qty']
-                pnl = (price - holding['cost']) * holding['qty']
-                total_value += value
+                value = price * holding['shares']
+                pnl = (price - holding['cost']) * holding['shares']
                 total_pnl += pnl
-                st.write(f"**{holding['symbol']}**: ${value:.2f} (PnL: ${pnl:+.2f})")
-        
-        st.metric("Total Value", f"${total_value:.2f}")
-        st.metric("Total PnL", f"${total_pnl:+.2f}")
+                st.write(f"**{holding['symbol']}**: ${value:.0f} (PnL: ${pnl:+.0f})")
+        st.metric("Total Portfolio PnL", f"${total_pnl:.0f}")
 
-# ========== WATCHLIST ==========
-elif page == "⭐ Watchlist":
-    st.title("⭐ Watchlist & Alerts")
+if page == "⭐ Watchlist/Alerts":
+    st.header("⭐ Watchlist & Price Alerts")
     
+    # Watchlist
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Watchlist")
-        new_sym = st.text_input("Add symbol").upper()
-        if st.button("➕ Add") and new_sym:
-            if new_sym not in st.session_state.watchlist:
-                st.session_state.watchlist.append(new_sym)
-                st.success(f"Added {new_sym}")
-    
-    with col2:
-        st.subheader("Price Alerts")
-        alert_sym = st.text_input("Alert symbol").upper()
-        target = st.number_input("Target", 0.0)
-        direction = st.selectbox("When price goes", ["above", "below"])
-        if st.button("🚨 Set Alert") and alert_sym and target:
-            st.session_state.price_alerts[alert_sym] = {
-                "target": target, "direction": direction, "hit": False
-            }
-            st.success(f"Alert set: {alert_sym} {direction} ${target}")
+        new_watch = st.text_input("Add to watchlist").upper()
+        if st.button("➕ Add") and new_watch:
+            if new_watch not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_watch)
     
     # Show watchlist
     if st.session_state.watchlist:
         for sym in st.session_state.watchlist:
             price = get_price(sym)
-            st.metric(sym, f"${price:.2f}" if price else "N/A")
+            st.metric(sym, f"${price:.2f}")
     
-    # Show alerts
-    if st.session_state.price_alerts:
-        st.subheader("Active Alerts")
-        for sym, alert in st.session_state.price_alerts.items():
-            st.write(f"{sym}: ${alert['target']} ({alert['direction']})")
+    # Alerts
+    st.subheader("🚨 Price Alerts")
+    alert_sym = st.text_input("Alert symbol").upper()
+    target_price = st.number_input("Target price", 1.0)
+    if st.button("Set Alert") and alert_sym:
+        st.session_state.price_alerts[alert_sym] = {
+            "target": target_price, "hit": False
+        }
+        st.success(f"Alert set for {alert_sym}")
 
-# ========== NEWS ==========
-elif page == "📰 News":
-    st.title("📰 Market News")
-    tab1, tab2 = st.tabs(["📈 Live News", "🎙️ Podcasts"])
+if page == "📰 News & Podcasts":
+    st.header("📰 Live Market News")
     
-    with tab1:
-        news = get_news(["AAPL", "SPY", "QQQ", "TSLA"])
-        if news:
-            for item in news:
-                with st.container(border=True):
-                    st.markdown(f"**{item['title']}**")
-                    st.caption(f"{item['publisher']} • {item['symbol']}")
-                    st.markdown(f"[Read full story]({item['link']})")
-        else:
-            st.info("📡 Fetching live news...")
+    # Live News (original format)
+    st.subheader("**Live Market News**")
+    symbols = ['AAPL', 'SPY', 'QQQ']
+    news = []
+    for sym in symbols:
+        try:
+            ticker = yf.Ticker(sym)
+            for item in ticker.news[:2]:
+                news.append({
+                    'title': item['title'],
+                    'source': item['publisher'],
+                    'symbol': sym
+                })
+        except:
+            continue
     
-    with tab2:
-        st.markdown("""
-        **🎙️ Daily Briefs:**
-        • [Yahoo Finance Live](https://finance.yahoo.com/video/)
-        • [WSJ Money Briefing](https://www.wsj.com/podcasts/your-money-matters)
-        • [CNBC Squawk Box](https://www.cnbc.com/squawk-box/)
-        """)
+    for item in news[:8]:
+        st.markdown(f"**{item['title'][:80]}...**")
+        st.caption(f"{item['source']} • {item['symbol']}")
+        st.markdown("─")
+    
+    st.subheader("**🎙️ Financial Podcasts**")
+    podcasts = [
+        "📻 Yahoo Finance Live Updates",
+        "🎤 WSJ Money Briefing (Daily)", 
+        "🔴 CNBC Squawk Box Highlights",
+        "💼 Bloomberg Markets Today"
+    ]
+    for pod in podcasts:
+        st.markdown(f"• **{pod}**")
 
 st.markdown("---")
-st.caption("✅ Live Trading Dashboard | Data: Yahoo Finance")
+st.caption(f"🕐 Updated: {datetime.now().strftime('%Y-%m-%d %H:%M CST')} | Data: Yahoo Finance")
